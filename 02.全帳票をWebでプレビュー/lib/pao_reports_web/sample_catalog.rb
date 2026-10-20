@@ -46,6 +46,8 @@ module PaoReportsWeb
     def simple(key)
       p = PrintData.new.set_definition(definition(key)).page_start
       p.set_value('Text2', "Webブラウザで作った\n印刷データです。") if key == 'quick-start'
+      # 名刺は 5 段。繰返しの物体は、何も書かないと 1 段目にしか描かない（原本と同じ、D-37）。各段に定義の文字をそのまま書く。
+      definition(key)['Objects'].each { |o| repeat(o).times { |i| p.set_value(o['Name'], o['Text'] || '', i) } } if key == 'business-card'
       p.page_end
     end
     def quick_start = simple('quick-start')
@@ -60,7 +62,7 @@ module PaoReportsWeb
         p.set_value('Line3', '', 0, false) if page == 2
         15.times do |line|
           value = (page - 1) * 15 + line + 1
-          p.set_value('行番号', value, line).set_value('10倍数', value * 10, line).set_value('横線', '', line)
+          p.set_value('行番号', value, line).set_value('10倍数', value * 10, line).set_value('横線', nil, line) # 罫線・枠は値を書かずに描く（'' を書くと描かない。原本と同じ、D-33）
           # 100で割り切れる値だけ、この行の文字色を青にする。
           p.change_attributes('10倍数', {'foreground' => '#FF0000FF'}, line) if (value * 10) % 100 == 0
         end
@@ -75,8 +77,8 @@ module PaoReportsWeb
       rows('postal', 1).each_slice(32).with_index do |chunk, page|
         p.page_start(page < 5 ? first : second).set_value('ページ', "Page-#{page + 1}").set_value('日時', now)
         chunk.each_with_index do |row, i|
-          p.set_value('郵便番号', row['郵便番号'], i).set_value('市区町村', row['市区町村'], i).set_value('住所', row['住所'], i).set_value('横罫線', '', i)
-          p.set_value('網掛け', '', i) if page >= 5 && i.odd?
+          p.set_value('郵便番号', row['郵便番号'], i).set_value('市区町村', row['市区町村'], i).set_value('住所', row['住所'], i).set_value('横罫線', nil, i)
+          p.set_value('網掛け', nil, i) if page >= 5 && i.odd?
         end
         row = chunk.first
         p.set_value('QR', "#{row['郵便番号']} #{row['市区町村']}#{row['住所']}".strip) if page < 5
@@ -91,7 +93,7 @@ module PaoReportsWeb
       rows('estimate', 1).each do |h|
         p.page_start(cover).set_value('お客様名', h['お客様名']).set_value('担当者名', h['担当者名']).page_end
         p.page_start(body).set_value('見積番号', h['見積番号']).set_value('お客様名', h['お客様名']).set_value('担当者名', h['担当者名']).set_value('見積日', japanese_date(h['見積日'])).set_value('ヘッダ合計', "\\ #{number(h['合計金額'])}").set_value('消費税額', number(h['消費税額'])).set_value('フッタ合計', number(h['合計金額']))
-        7.times { |i| %w[品番白 品名白 数量白 単価白 金額白 品番青 品名青 数量青 単価青 金額青].each { |name| p.set_value(name, '', i) } }
+        7.times { |i| %w[品番白 品名白 数量白 単価白 金額白 品番青 品名青 数量青 単価青 金額青 Square5 Square10].each { |name| p.set_value(name, nil, i) } } # Square5・Square10 は品名青・単価青と同じ位置の帯。何も書かないと 1 行目にしか描かない（D-37）
         details.select { |r| r['見積番号'].to_s == h['見積番号'].to_s }.each_with_index do |r, i|
           p.set_value('品番', r['品番'], i).set_value('品名', r['品名'], i).set_value('数量', r['数量'], i).set_value('単価', number(r['単価']), i).set_value('金額', number(r['金額']), i)
         end
@@ -112,7 +114,7 @@ module PaoReportsWeb
           base = object(d, "field#{j + 1}"); x = j.zero? ? base['X'].to_f * px : next_x; column_x << x; next_x = x + (base['Width'].to_f + adjust[j]) * px
         end
         max_h.times do |i|
-          p.set_value('hLine', '', i).set_value('LineRect', '', i)
+          p.set_value('hLine', nil, i).set_value('LineRect', nil, i)
           p.change_attributes('hLine', {'borderWidth' => 0.5 * px}, i) if i.zero?
           p.change_attributes('hLine', {'strokeStyle' => 'Double'}, i) if i == 1
           color = i.zero? ? '#FFFFDAB9' : (i < max_h - 3 ? (i.odd? ? '#FFFFFFFF' : '#FF87CEFA') : '#FFFFFFB4')
@@ -123,37 +125,61 @@ module PaoReportsWeb
             p.set_value("field#{j + 1}", '', i).change_attributes("field#{j + 1}", {'x'=>column_x[j],'width'=>(base['Width'].to_f+adjust[j])*px,'bold'=>i.zero?,'fontSize'=>i.zero? ? base['FontSizePt'].to_f : 12.0,'horizontalAlignment'=>i.zero? ? 'Center' : (j==1 ? 'Left' : (j.zero? ? 'Center' : 'Right'))}, i)
           end
         end
-        0.upto(max_v) { |j| p.set_value('vLine','',j).change_attributes('vLine',{'x'=>j<max_v ? column_x[j] : next_x},j); p.change_attributes('vLine',{'borderWidth'=>0.5*px},j) if j.zero? || j==max_v }
+        0.upto(max_v) { |j| p.set_value('vLine',nil,j).change_attributes('vLine',{'x'=>j<max_v ? column_x[j] : next_x},j); p.change_attributes('vLine',{'borderWidth'=>0.5*px},j) if j.zero? || j==max_v }
         %w[品番 品名 数量 単価 金額].each_with_index { |label,j| p.set_value("field#{j+1}",label,0) }
         total = 0
         current.each_with_index do |r, row|
-          amount = r['数量'].to_i * r['単価'].to_i; total += amount; i=row+1
-          p.set_value('field1',r['品番'],i).set_value('field2',r['品名'],i).set_value('field3',r['数量'],i).set_value('field4',number(r['単価']),i).set_value('field5',number(amount),i)
+          amount = invoice_checked_integer(invoice_integer(r['数量']) * invoice_integer(r['単価']), 'amount')
+          total = invoice_checked_integer(total + amount, 'total'); i=row+1
+          p.set_value('field1',r['品番'],i).set_value('field2',r['品名'],i).set_value('field3',r['数量'],i).set_value('field4',invoice_number(r['単価']),i).set_value('field5',invoice_number(amount),i)
         end
-        tax=(total*0.05).round
-        [['小計',total],['消費税',tax],['合計',total+tax]].each_with_index { |(label,amount),k| row=max_h-3+k; p.set_value('field4',label,row).set_value('field5',number(amount),row).change_attributes('field4',{'fontSize'=>16,'bold'=>true,'horizontalAlignment'=>'Center'},row) }
-        p.set_value('txtTotal',number(total+tax)).change_attributes('hLine',{'strokeStyle'=>'Double'},max_h-3).set_value('hLine','',max_h).change_attributes('hLine',{'borderWidth'=>0.5*px},max_h).page_end
+        tax=total*0.05
+        [['小計',total],['消費税',tax],['合計',total+tax]].each_with_index { |(label,amount),k| row=max_h-3+k; p.set_value('field4',label,row).set_value('field5',invoice_number(amount),row).change_attributes('field4',{'fontSize'=>16,'bold'=>true,'horizontalAlignment'=>'Center'},row) }
+        p.set_value('txtTotal',invoice_number(total+tax)).change_attributes('hLine',{'strokeStyle'=>'Double'},max_h-3).set_value('hLine',nil,max_h).change_attributes('hLine',{'borderWidth'=>0.5*px},max_h).page_end
       end
       p
     end
 
+
+    # Reports.NET invoice: round operands to even before multiplying; keep tax unrounded.
+    def invoice_integer(value)
+      n = Float(value)
+      raise ArgumentError, 'Invalid invoice numeric value' unless n.finite?
+      result = n.round(half: :even)
+      raise RangeError, 'Invoice Int64 overflow' unless (-2**63...2**63).cover?(result)
+      result
+    end
+    def invoice_number(value)
+      n = Float(value)
+      raise ArgumentError, 'Invalid invoice numeric value' unless n.finite?
+      result = n.round(half: :even)
+      invoice_checked_integer(result, 'display')
+      sign = n.negative? || (n.zero? && 1.0/n < 0) ? '-' : ''
+      sign + result.abs.to_s.reverse.scan(/.{1,3}/).join(',').reverse
+    end
+    def invoice_checked_integer(value, label)
+      raise RangeError, "Invoice #{label} overflow" unless (-2**63...2**63).cover?(value)
+      value
+    end
+
     def products
       big=rows('products',1).to_h{|r|[r['大分類コード'].to_s,r['大分類名称'].to_s]}; small=rows('products',2).to_h{|r|[[r['大分類コード'],r['小分類コード']].join(':'),r['小分類名称'].to_s]}
-      stream=[]; prev_big=prev_small=nil; big_count=small_count=0
+      stream=[]; prev_big=prev_small=prev_big_name=prev_small_name=nil; big_count=small_count=0
       rows('products',3).each do |r|
-        bn=big[r['大分類コード'].to_s].to_s; sn=small[[r['大分類コード'],r['小分類コード']].join(':')].to_s
-        if prev_small && prev_small!=sn then stream << subtotal('small',prev_small,small_count); small_count=0 end
-        if prev_big && prev_big!=bn then stream << subtotal('big',prev_big,big_count); big_count=0 end
-        stream << {'大分類'=>prev_big==bn ? '' : bn,'小分類'=>prev_small==sn ? '' : sn,'品番'=>r['品番'].to_s,'品名'=>r['品名'].to_s,'kind'=>'detail'}
-        prev_big=bn;prev_small=sn;big_count+=1;small_count+=1
+        big_key=r['大分類コード'].to_s; small_key=[big_key,r['小分類コード']].join(':')
+        bn=big[big_key].to_s; sn=small[small_key].to_s
+        if prev_small && prev_small!=small_key then stream << subtotal('small',prev_small_name,small_count); small_count=0 end
+        if prev_big && prev_big!=big_key then stream << subtotal('big',prev_big_name,big_count); big_count=0 end
+        stream << {'大分類'=>prev_big==big_key ? '' : bn,'小分類'=>prev_small==small_key ? '' : sn,'品番'=>r['品番'].to_s,'品名'=>r['品名'].to_s,'kind'=>'detail'}
+        prev_big=big_key;prev_small=small_key;prev_big_name=bn;prev_small_name=sn;big_count+=1;small_count+=1
       end
-      stream << subtotal('small',prev_small,small_count) if prev_small; stream << subtotal('big',prev_big,big_count) if prev_big
+      stream << subtotal('small',prev_small_name,small_count) if prev_small; stream << subtotal('big',prev_big_name,big_count) if prev_big
       p=PrintData.new.set_definition(definition('products'))
       stream.each_slice(20) do |chunk|
         p.page_start
         chunk.each_with_index do |r,i|
           %w[大分類 小分類 品番 品名].each{|n|p.set_value(n,r[n],i)}
-          %w[枠_大分類 枠_小分類 枠_品番 枠_品名].each{|n|p.set_value(n,'',i);p.change_attributes(n,{'background'=>r['kind']=='small' ? '#FFFFFFE0':'#FFFFB6C1','fillEnabled'=>true,'fillStyle'=>'Solid'},i) unless r['kind']=='detail'}
+          %w[枠_大分類 枠_小分類 枠_品番 枠_品名].each{|n|p.set_value(n,nil,i);p.change_attributes(n,{'background'=>r['kind']=='small' ? '#FFFFFFE0':'#FFFFB6C1','fillEnabled'=>true,'fillStyle'=>'Solid'},i) unless r['kind']=='detail'}
         end
         p.page_end
       end

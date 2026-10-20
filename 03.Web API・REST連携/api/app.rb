@@ -7,11 +7,12 @@ require 'sinatra/base'
 require 'time'
 require 'reports_web'
 require_relative 'lib/pao_reports_web/sample_catalog'
+require_relative 'lib/pao_reports_web/image_embedding'
 
 class ReportsRubyApp < Sinatra::Base
   BASE = '/demo/reports.web/samples/ruby'
   SAMPLES = {'quick-start'=>'あっという間に帳票出力','multiples-of-ten'=>'10のサンプル','postal'=>'郵便番号一覧（定義切替）','estimate'=>'見積書（表紙＋明細）','invoice'=>'請求書','products'=>'商品大小分類（途中で小計）','business-card'=>'名刺','design-showcase'=>'デザイン機能見本'}.freeze
-  MAX = 32 * 1024 * 1024
+  MAX = 64 * 1024 * 1024
   set :bind, ENV.fetch('HOST','127.0.0.1'); set :port, ENV.fetch('PORT','8096').to_i
   set :server, :puma; set :show_exceptions, false; set :raise_errors, true
 
@@ -68,7 +69,7 @@ class ReportsRubyApp < Sinatra::Base
       settings.template.sub('{{SAMPLES}}',options).sub('{{PREVIEW_URL}}',Rack::Utils.escape_html(settings.preview)).sub('{{DESIGNER_URL_JSON}}',JSON.generate(settings.designer))
     end
     def api
-      action=params.fetch('action','data'); return asset if action=='asset'; key=sample!
+      action=params.fetch('action','data'); return asset if action=='asset'; key=action=='server-pdf' && request.post? ? params.fetch('sample','invoice') : sample!
       case action
       when 'catalog' then json(SAMPLES)
       when 'definition'
@@ -98,6 +99,7 @@ class ReportsRubyApp < Sinatra::Base
     end
     def inline_assets(value)
       each_value(value){|parent,key,item|next unless item.is_a?(String);if item.start_with?(settings.asset_base);name=item.delete_prefix(settings.asset_base);halt_json(400,'未登録の画像資源です。') unless %w[kakuin.png estimate-header.jpg].include?(name);type=name.end_with?('.jpg')?'image/jpeg':'image/png';parent[key]="data:#{type};base64,#{Base64.strict_encode64(File.binread(File.join(settings.resources,'images',name)))}";elsif key=='ImagePath'&&!item.empty?&&!item.start_with?('data:');halt_json(400,'外部画像は登録した画像か埋め込み画像を使用してください。');end}
+      each_value(value){|parent,_,_|PaoReportsWeb::ImageEmbedding.embed!(parent)} # B18: ImageDataBase64, not a data: URI ImagePath
     end
     def server_pdf(key)
       halt_json(405,'POSTを使用してください。') unless request.post?;halt_json(429,'PDF作成中です。少し待ってからお試しください。') unless settings.render_lock.try_lock

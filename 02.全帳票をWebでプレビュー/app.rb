@@ -11,7 +11,7 @@ require_relative 'lib/pao_reports_web/sample_catalog'
 class ReportsRubyApp < Sinatra::Base
   BASE = '/demo/reports.web/samples/ruby'
   SAMPLES = {'quick-start'=>'あっという間に帳票出力','multiples-of-ten'=>'10のサンプル','postal'=>'郵便番号一覧（定義切替）','estimate'=>'見積書（表紙＋明細）','invoice'=>'請求書','products'=>'商品大小分類（途中で小計）','business-card'=>'名刺','design-showcase'=>'デザイン機能見本'}.freeze
-  MAX = 32 * 1024 * 1024
+  MAX = 64 * 1024 * 1024
   set :bind, ENV.fetch('HOST','127.0.0.1'); set :port, ENV.fetch('PORT','8096').to_i
   set :server, :puma; set :show_exceptions, false; set :raise_errors, true
 
@@ -68,7 +68,7 @@ class ReportsRubyApp < Sinatra::Base
       settings.template.sub('{{SAMPLES}}',options).sub('{{PREVIEW_URL}}',Rack::Utils.escape_html(settings.preview)).sub('{{DESIGNER_URL_JSON}}',JSON.generate(settings.designer))
     end
     def api
-      action=params.fetch('action','data'); return asset if action=='asset'; key=sample!
+      action=params.fetch('action','data'); return asset if action=='asset'; key=action=='server-pdf' && request.post? ? params.fetch('sample','invoice') : sample!
       case action
       when 'catalog' then json(SAMPLES)
       when 'definition'
