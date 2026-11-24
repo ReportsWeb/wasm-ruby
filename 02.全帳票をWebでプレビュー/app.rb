@@ -13,7 +13,7 @@ class ReportsRubyApp < Sinatra::Base
   SAMPLES = {'quick-start'=>'あっという間に帳票出力','multiples-of-ten'=>'10のサンプル','postal'=>'郵便番号一覧（定義切替）','estimate'=>'見積書（表紙＋明細）','invoice'=>'請求書','products'=>'商品大小分類（途中で小計）','business-card'=>'名刺','design-showcase'=>'デザイン機能見本'}.freeze
   MAX = 64 * 1024 * 1024
   set :bind, ENV.fetch('HOST','127.0.0.1'); set :port, ENV.fetch('PORT','8096').to_i
-  set :server, :puma; set :show_exceptions, false; set :raise_errors, true
+  set :server, :puma; set :show_exceptions, false; set :raise_errors, false
 
   configure do
     set :resources, ENV.fetch('REPORTS_RESOURCE_ROOT','/opt/reports/resources')
@@ -49,8 +49,10 @@ class ReportsRubyApp < Sinatra::Base
     end
   end
 
+  # 例外の文字列・内部パス・スタックトレースは応答へ出さず、サーバーのログにだけ残す。
   error do
-    status 500; json({'error'=>env['sinatra.error'].message})
+    warn "Request failed: #{env['sinatra.error'].class}"
+    status 500; json({'error'=>'処理に失敗しました。サーバーのログを確認してください。'})
   end
 
   helpers do
@@ -97,13 +99,16 @@ class ReportsRubyApp < Sinatra::Base
       externalize(value['Definition'],key);today=Time.now.getlocal('+09:00');each_value(value){|parent,name,_|next unless name=='Value';parent[name]="#{today.year}年#{today.month}月#{today.day}日" if parent['Name']=='txtDate';parent[name]=settings.asset_base+'kakuin.png' if key=='invoice'&&parent['Name']=='Image1'};Array(value['Pages']).each{|page|externalize(page['Definition'],key)}
     end
     def inline_assets(value)
-      each_value(value){|parent,key,item|next unless item.is_a?(String);if item.start_with?(settings.asset_base);name=item.delete_prefix(settings.asset_base);halt_json(400,'未登録の画像資源です。') unless %w[kakuin.png estimate-header.jpg].include?(name);type=name.end_with?('.jpg')?'image/jpeg':'image/png';parent[key]="data:#{type};base64,#{Base64.strict_encode64(File.binread(File.join(settings.resources,'images',name)))}";elsif key=='ImagePath'&&!item.empty?&&!item.start_with?('data:');halt_json(400,'外部画像は登録した画像か埋め込み画像を使用してください。');end}
+      each_value(value){|parent,key,item|next unless item.is_a?(String);if item.start_with?(settings.asset_base);name=item.delete_prefix(settings.asset_base);halt_json(400,'未登録の画像資源です。') unless %w[kakuin.png estimate-header.jpg].include?(name);type=name.end_with?('.jpg')?'image/jpeg':'image/png';parent[key]="data:#{type};base64,#{Base64.strict_encode64(File.binread(File.join(settings.resources,'images',name)))}";elsif key=='ImagePath'&&!item.empty?&&!item.start_with?('data:')&&!item.match?(/\Ahttps?:\/\//i);halt_json(400,'外部画像は登録した画像か埋め込み画像を使用してください。');end}
     end
     def server_pdf(key)
       halt_json(405,'POSTを使用してください。') unless request.post?;halt_json(429,'PDF作成中です。少し待ってからお試しください。') unless settings.render_lock.try_lock
       begin
-        body=request.body.read(MAX+1);halt_json(413,'印刷データが大きすぎます。') if body.bytesize>MAX;value=JSON.parse(body);inline_assets(value);begin;pdf=PaoReportsWeb::ReportsWebEngine.new(url:settings.engine).render_pdf(value);rescue PaoReportsWeb::ReportsWebEngineError;halt_json(502,'サーバーでPDFを作成できませんでした。');end;content_type 'application/pdf';headers 'Content-Disposition'=>%(inline; filename="#{key}.pdf"),'X-Reports-Engine'=>'server-wasm';pdf
+        body=request.body.read(MAX+1);halt_json(413,'印刷データは64MiB以内にしてください。') if body.bytesize>MAX;value=JSON.parse(body);inline_assets(value);begin;pdf=PaoReportsWeb::ReportsWebEngine.new(url:settings.engine).render_pdf(value);rescue PaoReportsWeb::ReportsWebEngineError;halt_json(502,'サーバーでPDFを作成できませんでした。');end;content_type 'application/pdf';headers 'Content-Disposition'=>%(inline; filename="#{key.gsub(/[^A-Za-z0-9_.-]/,'_')}.pdf"),'X-Reports-Engine'=>'server-wasm';pdf
       rescue JSON::ParserError;halt_json(400,'JSON形式が不正です。')
+      # エンジン停止は502、90秒の時間切れは504。
+      rescue Net::OpenTimeout,Net::ReadTimeout,Net::WriteTimeout;halt_json(504,'PDF作成エンジンが時間内に応答しませんでした。')
+      rescue SystemCallError,IOError,SocketError,Net::HTTPBadResponse;halt_json(502,'PDF作成エンジンに接続できませんでした。')
       ensure settings.render_lock.unlock if settings.render_lock.owned?
       end
     end
