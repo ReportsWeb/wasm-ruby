@@ -78,7 +78,7 @@ module PaoReportsWeb
         p.page_start(page < 5 ? first : second).set_value('ページ', "Page-#{page + 1}").set_value('日時', now)
         chunk.each_with_index do |row, i|
           p.set_value('郵便番号', row['郵便番号'], i).set_value('市区町村', row['市区町村'], i).set_value('住所', row['住所'], i).set_value('横罫線', nil, i)
-          p.set_value('網掛け', nil, i) if page >= 5 && i.odd?
+          p.set_value('網掛け', nil, i / 2) if page >= 5 && i.odd?
         end
         row = chunk.first
         p.set_value('QR', "#{row['郵便番号']} #{row['市区町村']}#{row['住所']}".strip) if page < 5
