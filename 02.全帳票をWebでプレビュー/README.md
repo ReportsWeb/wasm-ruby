@@ -37,7 +37,7 @@ ruby、database、engineが `Up`（起動中）になっていることを確認
 
 このURLは、お使いのパソコン内で今起動したサーバーの入口です。公開デモサイトではないため、起動前にURLだけ開いても動きません。ポートを外部へ開放する設定も不要です。
 
-同梱の `.\Start.ps1`（Windows）／`sh start.sh`（macOS・Linux）でも、上と同じDockerコマンドを実行できます。
+同じフォルダーの `.\Start.ps1`（Windows）／`sh start.sh`（macOS・Linux）でも、上と同じDockerコマンドを実行できます。
 
 ## 3. 画面で確かめる
 
@@ -77,7 +77,7 @@ docker compose up -d --build --wait --wait-timeout 180
 |場所|役割|
 |---|---|
 |`lib/pao_reports_web/sample_catalog.rb`|帳票を作る中心部分。`invoice()`は請求書、`estimate()`は見積書、`rows()`はSQLによるデータ取得|
-|`lib/pao_reports_web/print_data.rb`|値、明細、ページを印刷データへまとめるRubyクラス|
+|gem [`reports_web`](https://rubygems.org/gems/reports_web) の `PaoReportsWeb::PrintData`|値、明細、ページを印刷データへまとめるRubyクラス|
 |`app.rb`|HTTP要求を受け、印刷データ・PDFを返す入口|
 |`resources/definitions/`|帳票ごとのデザイン（PREPDJ）|
 |`resources/images/`|角印などの画像|
@@ -85,7 +85,7 @@ docker compose up -d --build --wait --wait-timeout 180
 |`compose.yaml`|このサンプルで起動するサービスと接続先|
 |`Dockerfile`|Rubyの実行環境の作り方|
 
-まず`sample_catalog.rb`の`invoice()`を読み、分からない呼び出しを`print_data.rb`で調べてください。データ取得を調べる場合は`rows()`を読みます。
+まず`sample_catalog.rb`の`invoice()`を読み、分からない呼び出しをgem `reports_web` の `PaoReportsWeb::PrintData`で調べてください。データ取得を調べる場合は`rows()`を読みます。
 
 デザインは`resources/definitions/invoice.prepdj`をReports Webデザイナーで開いて編集できます。保存先をこのファイルに戻し、第4節のDockerコマンドで再ビルドしてから帳票をもう一度読み込みます。請求書はRuby側でも明細の色や幅を指定しているため、それらの変更は`invoice()`も確認してください。
 
@@ -115,7 +115,7 @@ docker compose down --volumes
 
 このサンプルのコンテナーとネットワーク、試用中のDBデータを削除します。編集したRubyや帳票定義は消えません。別の01・02・03は停止しません。次に起動すると同じ初期データが自動で入ります。DBを残して一時停止するだけなら`docker compose stop`を使います。
 
-同梱の `.\Stop.ps1`／`sh stop.sh`でも同じ操作ができます。
+同じフォルダーの `.\Stop.ps1`／`sh stop.sh`でも同じ操作ができます。
 
 ### サンプル用イメージも削除して、最初から試す
 

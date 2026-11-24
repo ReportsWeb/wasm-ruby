@@ -41,6 +41,8 @@ docker compose up -d --build --wait --wait-timeout 180
 docker compose down --volumes   # 終わったら停止・削除
 ```
 
+Dockerを使わずに動かしたいときは、製品サイト（https://www.pao.ac/reports.web/）の体験版「WASM・7 言語セット」のZIPに入っている同じサンプルをお使いください。GitHubのこのリポジトリには、サンプルが使う帳票エンジンとデザイナー・プレビュー画面のファイル（Runtime）が入っていないため、ここではDockerで動かします。
+
 ## コードの要点
 
 ```ruby
@@ -97,6 +99,8 @@ git clone https://github.com/ReportsWeb/wasm-ruby.git
 cd "wasm-ruby/01.あっという間に帳票出力"
 docker compose up -d --build --wait --wait-timeout 180   # open http://127.0.0.1:19260/
 ```
+
+Without Docker: this repository does not include the runtime (engine, designer and previewer files) that the samples need. Use the same samples in the trial ZIP "WASM・7 言語セット" (Reports-Web-WASM.zip) from https://www.pao.ac/reports.web/, which includes the runtime.
 
 The gem and the engine are trial builds; output carries a red "SAMPLE" mark until a purchased license file is configured. Sample code: MIT. Gem and engine: Reports.Web license.
 
